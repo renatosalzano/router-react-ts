@@ -55,7 +55,13 @@ function clientRouter() {
     }
   });
 
-  function change_location(location: string) {
+  let processing = {} as ReturnType<typeof Processing>
+
+  async function change_location(location: string) {
+
+    processing = Processing(location)
+
+    console.log('change location', location)
 
     const update: Omit<typeof router, "state"> = {
       route: '',
@@ -67,19 +73,22 @@ function clientRouter() {
     let [path, params = window.location.search] = location.split('?');
 
     if (params) {
+
       const url_params = new URLSearchParams(params);
       for (const [name, value] of url_params.entries()) {
         update.params[name] = value;
       }
+
+      if (!params.startsWith("?")) {
+        params += '?'
+      }
+
     }
 
-    log(path, components.hasOwnProperty(path))
     if (components.hasOwnProperty(path)) {
-      update.location = path;
       update.route = path;
     } else {
 
-      update.location = path;
       update.route = path;
 
       // resolve dynamic route
@@ -92,16 +101,15 @@ function clientRouter() {
         let dirname = Path.dirname(curr);
         let basename = Path.basename(curr)
 
-        rest = Path.join(rest, basename)
+        rest = Path.join(curr, basename)
         slug_size = slug.unshift(basename);
 
         if (dynamic_routes.hasOwnProperty(dirname)) {
           const data = dynamic_routes[dirname];
 
-          if (data.slug_size == 0 || data.slug_size == slug_size) {
-            update.location = Path.join(dirname, rest);
+          if (data.slug_size == 0 || data.slug_size <= slug_size) {
             update.route = data.route;
-            update.slug = slug
+            update.slug = slug;
           }
 
           break;
@@ -121,7 +129,8 @@ function clientRouter() {
         delete ctx.route;
         Object.freeze(ctx)
 
-        const not_allowed = mod.before(ctx);
+        const not_allowed = await mod.before(ctx);
+        log('resolve before', not_allowed)
         if (not_allowed) {
           update.route = '401';
         };
@@ -133,6 +142,8 @@ function clientRouter() {
     router.slug = update.slug;
 
     router.location = update.location;
+
+    processing.done()
   }
 
 
@@ -200,7 +211,14 @@ function clientRouter() {
 
   // API
 
-  const navigate = <T extends { [key: string]: any }>(to: string, state?: ((prev: T) => Partial<T>) | Partial<T>) => {
+  const navigate = async <T extends { [key: string]: any }>(to: string, state?: ((prev: T) => Partial<T>) | Partial<T>) => {
+
+    if (processing.path == to) {
+      log('same path abort navigate');
+      return;
+    }
+
+    if (processing.pending) await processing.pending;
 
     if (state) {
 
@@ -210,7 +228,7 @@ function clientRouter() {
       router.state = state;
     }
 
-    router.location = to;
+    change_location(to)
   };
 
 
@@ -229,5 +247,18 @@ function clientRouter() {
   }
 
 }
+
+
+function Processing(path: string) {
+  let done = () => undefined;
+  const pending = new Promise(res => (done as any) = res);
+  return {
+    pending,
+    path,
+    done
+  };
+}
+
+
 
 export default clientRouter;

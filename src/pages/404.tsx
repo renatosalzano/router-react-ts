@@ -2,7 +2,7 @@ function NotFound() {
 
   return (
     <div>
-      404 not found asdfasfd
+      404 not found
     </div>
   )
 }

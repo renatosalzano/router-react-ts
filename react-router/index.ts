@@ -95,7 +95,9 @@ function reactRouter(): Plugin {
     };
 
     if (dev_server) {
-      dev_server.transformRequest('@react-router/src/clientRouter.ts')
+      dev_server.transformRequest('@react-router/src/build.ts')
+      print(dev_server.moduleGraph.urlToModuleMap.keys())
+
     };
 
   }
@@ -135,23 +137,30 @@ function reactRouter(): Plugin {
       server.watcher.on('add', (path) => {
         if (is_route(path)) {
           console.log(`File ${path} created`);
-          build()
+          // build()
+          dev_server.restart()
         }
       });
 
       server.watcher.on('change', (path) => {
         if (is_route(path)) {
           console.log(`File ${path} changed`);
-          build()
+          // build()
+          dev_server.restart()
         }
       });
 
       server.watcher.on('unlink', (path) => {
         if (is_route(path)) {
           console.log(`File ${path} deleted`);
-          build()
+          // build()
+          dev_server.restart()
         }
       });
+
+      server.middlewares.use('/@react-router/src/clientRouter.ts', async function (req, res) {
+        print(req)
+      })
 
       // server.middlewares.use('/@rce/client.js', async function name(req, res, next) {
       //   print('requested client.js'.y())
@@ -183,7 +192,6 @@ function reactRouter(): Plugin {
 
       if (id.startsWith('@react-router')) {
         id = id.replace('@', '/')
-        print('resolved;m', id)
         return { id }
       }
 
@@ -217,6 +225,7 @@ function reactRouter(): Plugin {
       }
 
       if (id == '/react-router/src/clientRouter.ts') {
+        print('trasnform clientRouter;m')
         return {
           code,
           map: null
@@ -232,6 +241,10 @@ function reactRouter(): Plugin {
 
       //   // parser(id, code)
       // }
+    },
+
+    shouldTransformCachedModule(options) {
+      print(options)
     },
   }
 }

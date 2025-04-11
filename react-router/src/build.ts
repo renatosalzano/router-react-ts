@@ -2,7 +2,7 @@ import { ComponentType } from "react";
 /* IMPORTS */
 
 type Module = {
-  before?: (ctx: any) => boolean;
+  before?: (ctx: any) => Promise<void | boolean>;
 }
 
 const modules: { [key: string]: Module } = {/* MODULES */
