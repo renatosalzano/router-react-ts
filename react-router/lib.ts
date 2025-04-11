@@ -1,13 +1,13 @@
 // import { Router } from "./Router";
 import type { Routes } from "./.local/types";
-import reactRouter from "./reactRouter";
+import clientRouter from "./src/clientRouter";
 
 
 const {
   Router,
   useParams,
   navigate
-} = reactRouter()
+} = clientRouter()
 
 
 export {
@@ -16,6 +16,14 @@ export {
   navigate
 }
 
+declare namespace Route {
+  type Ctx = {
+    location: string;
+    params: { [key: string]: string };
+  }
+  type before = (ctx: Ctx) => any;
+}
+
 export type {
-  Routes
+  Route
 }

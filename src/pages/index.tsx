@@ -1,5 +1,7 @@
 
+export function before() {
 
+}
 
 function Home() {
   return (

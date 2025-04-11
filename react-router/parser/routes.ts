@@ -29,7 +29,7 @@ export function routes_parser(routes: StringObject, dynamic_routes: string[], co
     .replace('/*COMPONENTS*/', components.join(','))
     .replace('/*DYNAMIC_ROUTES*/', dynamic_routes.join(','))
 
-  print(code)
+  // print(code)
 
   // BUILD TYPES FOR DEV
   let types_code = readFileSync(resolve(__dirname, '../.local/types.template'), 'utf-8');

@@ -1,12 +1,15 @@
 import { useParams } from "react-router";
 
+
 function UserPage() {
 
   const { slug } = useParams();
 
+  console.log(slug)
+
   return (
     <div>
-      <span>user: <strong>{slug.user || 'anonymous'}</strong></span>
+      <span>user: <strong>{slug[0] || 'anonymous'}</strong></span>
     </div>
   )
 };

@@ -4,43 +4,42 @@ import type {
   Plugin,
   ViteDevServer
 } from "vite"
-import { dirname, extname, join, parse, posix, relative, resolve } from 'path';
+import { dirname, join, parse, posix, relative, resolve } from 'path';
 import { readdirSync, readFileSync } from 'fs';
-import { print } from './utils/shortcode';
-import { routes_parser } from './parser/routes';
+import { print, time } from './utils/shortcode';
+import { build_routes } from './src/build_routes';
+import { readFile } from 'fs/promises';
 
-
-function get_code(path: string): string {
-  print('GET CODE;m', path)
-  const code = readFileSync(path, 'utf-8')
-  return code;
-}
 
 function reactRouter(): Plugin {
 
-  const src = 'src/pages';
+
+  const src_routes = 'src/pages';
+
   let dev_server: ViteDevServer;
+  let cmd: string;
 
   const routes: { [key: string]: string } = {};
-  const dynamic_routes: string[] = [];
-
-  print(resolve(`${process.cwd()}/react-router`))
+  const dynamic_routes = new Set<string>();
+  const route_components = new Map<string, string>();
+  const cache = new Map<string, string>();
 
   const is_src = createFilter(
     `src/**/*.{js,ts,jsx,tsx}`,
     'node_modules/**'
   );
 
-
   const is_route = createFilter(
-    `${src}/**/*.{jsx,tsx}`,
+    `${src_routes}/**/*.{jsx,tsx}`,
     'node_modules/**'
   );
 
 
   function build() {
 
-    const routes_path = resolve(process.cwd(), src)
+    print(time(';1'), '[react-router];c', 'build routes.')
+
+    const routes_path = resolve(process.cwd(), src_routes)
 
     const source = readdirSync(
       // folder to build routes
@@ -52,23 +51,29 @@ function reactRouter(): Plugin {
 
       if (file.isFile()) {
 
+        const id = join(file.parentPath, file.name);
+        const source_path = normalizePath("/" + relative(process.cwd(), id));
+
+        // print(source_path)
+
         const path = resolve((file.parentPath || file.path), file.name);
         const filename = parse(path).name;
+
         // print('filename;m', filename);
 
         let route = dirname(path)
           .replace(routes_path, "")
           .replace(/\\/g, '/')
 
-        if (filename == '404') {
-          route = '404'
+        if (/[0-9]{3}/.test(filename)) {
+          route = filename;
         } else if (filename != 'index') {
 
           const final_route = posix.join(route, filename);
 
           if (filename.startsWith('[')) {
-            const slug = filename.match(/(?<=\[).*?(?=\])/gm)
-            dynamic_routes.push(`"${route}" : { route:"${final_route}", slug:"${slug}" }`);
+            const limit = Number(filename.match(/(?<=\{).*?(?=\})/gm) || 1)
+            dynamic_routes.add(`\n\t"${route}" : { route:"${final_route}", slug_size: ${limit} }`);
           }
 
           // print(dynamic_routes)
@@ -80,16 +85,17 @@ function reactRouter(): Plugin {
 
         routes[route] = path;
 
-        print('route;m', route)
-
+        print('route;m', route, path + ';g')
 
         if (dev_server) {
-
-          if (is_route(path)) {
-            dev_server.transformRequest(path)
-          }
+          dev_server.transformRequest(source_path)
         };
+
       }
+    };
+
+    if (dev_server) {
+      dev_server.transformRequest('@react-router/src/clientRouter.ts')
     };
 
   }
@@ -109,34 +115,43 @@ function reactRouter(): Plugin {
         server: {
           watch: {
             // Specifica la cartella da monitorare 
-            paths: `${src}/**/*`,
+            paths: `${src_routes}/**/*`,
             ignored: ['node_modules/**', 'react-router/**']
           }
         }
       }
     },
 
+    configResolved(config) {
+      // print(config)
+      // TODO USE FOR HMR
+      cmd = config.command;
+      print('CMD;m', cmd)
+    },
+
     configureServer(server) {
       dev_server = server;
 
       server.watcher.on('add', (path) => {
-        console.log(`File ${path} has been created`);
-        // Gestisci la creazione del file qui 
-        build()
+        if (is_route(path)) {
+          console.log(`File ${path} created`);
+          build()
+        }
       });
 
       server.watcher.on('change', (path) => {
-        console.log(`File ${path} has been changed`);
-        // Gestisci l'eliminazione del file qui 
+        if (is_route(path)) {
+          console.log(`File ${path} changed`);
+          build()
+        }
       });
 
       server.watcher.on('unlink', (path) => {
-        console.log(`File ${path} has been deleted`);
-        // Gestisci l'eliminazione del file qui
-        build()
+        if (is_route(path)) {
+          console.log(`File ${path} deleted`);
+          build()
+        }
       });
-
-
 
       // server.middlewares.use('/@rce/client.js', async function name(req, res, next) {
       //   print('requested client.js'.y())
@@ -154,40 +169,69 @@ function reactRouter(): Plugin {
 
     // build-time
     // 1.
-    resolveId(id, importer) {
+    async resolveId(id, _importer) {
+
+      // if (is_route(id)) {
+
+      //   // print('src;m', normalizePath(relative(process.cwd(), id)))
+      //   const resolved_id = route_components.get(id) || normalizePath(relative(process.cwd(), id));
+      //   const code = await readFile(id, 'utf-8');
+      //   cache.set(resolved_id, code)
+      //   // return { id }
+      //   return { id: resolved_id }
+      // }
+
       if (id.startsWith('@react-router')) {
         id = id.replace('@', '/')
-        print('intercepted react-router;m', id)
+        print('resolved;m', id)
         return { id }
       }
 
     },
     // 2. load code from id
-    load(id) {
-      switch (id) {
-        case '/react-router/build':
-          return get_code(join(__dirname, '/build.ts'))
+    async load(id) {
+      if (id == '/react-router/src/build.ts') {
+        return ""
       }
+
+      if (id == '/react-router/src/clientRouter.ts') {
+        const code = await readFile(join(process.cwd(), id), 'utf-8');
+        // print(code)
+        return code;
+      }
+
+      // if (cache.has(id)) {
+      //   return cache.get(id)
+      // }
+
     },
     // 3.
     transform(code, id) {
-      if (id == '/react-router/build') {
+      if (id == '/react-router/src/build.ts') {
         print('trasnform build;m')
+
         return {
-          code: routes_parser(routes, dynamic_routes, code),
+          code: build_routes(routes, dynamic_routes),
           map: null
         }
       }
-      if (is_src(id)) {
-        // print('transform src', id)
 
+      if (id == '/react-router/src/clientRouter.ts') {
+        return {
+          code,
+          map: null
+        }
       }
-      if (is_route(id)) {
-        // filter only jsx/tsx file
-        print('transform;y', id);
+      // if (is_src(id)) {
+      //   // print('transform src', id)
 
-        // parser(id, code)
-      }
+      // }
+      // if (is_route(id)) {
+      //   // filter only jsx/tsx file
+      //   print('transform;y', id);
+
+      //   // parser(id, code)
+      // }
     },
   }
 }

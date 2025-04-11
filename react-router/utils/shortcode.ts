@@ -6,12 +6,13 @@
 const colors: any = {
   // fg
   0: 30,
+  1: 90,
   r: 31,
   g: 32,
   y: 33,
   b: 34,
   m: 95,
-  c: 36,
+  c: 96,
   w: 37,
   // bg
   R: 41,
@@ -50,4 +51,8 @@ export function print(...logs: any[]) {
 
 export function to_posix(path: string) {
   return path.replace(/\\/g, '/')
+}
+
+export function time(c = "") {
+  return new Date().toLocaleTimeString() + c;
 }

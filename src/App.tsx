@@ -6,20 +6,25 @@ import { useRef } from 'react';
 
 function App() {
 
+
   const current_route = useRef('/')
 
-  function onclick() {
-    const next_page = current_route.current == '/' ? "/user" : '/';
-    current_route.current = next_page
-    console.log(next_page)
-    navigate("")
+  function to_user() {
+    navigate("/user")
   }
+
+  function to_home() {
+    navigate("/")
+  }
+
+
 
   return (
     <div>
       <h1>App.tsx</h1>
       <div>
-        <button onClick={onclick}>switch page</button>
+        <button onClick={to_home}>home page</button>
+        <button onClick={to_user}>user page</button>
       </div>
       <Router />
     </div>
