@@ -22,6 +22,7 @@ declare namespace Route {
     params: { [key: string]: string };
   }
   type before = (ctx: Ctx) => any;
+  type onerror = (ctx: Ctx, error: string) => any;
 }
 
 export type {

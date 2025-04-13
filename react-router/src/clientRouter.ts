@@ -1,5 +1,5 @@
 import { createElement, useEffect, useState } from "react";
-import Path from "path-browserify"
+import Path, { dirname } from "path-browserify"
 import { components, modules, dynamic_routes } from '@react-router/src/build.ts';
 
 
@@ -18,16 +18,26 @@ function clientRouter() {
 
   const listeners: Fn[] = [];
 
-
-  function log(...args: any[]) { console.log(...args) }
-
-  const router = new Proxy<RouterCtx & { route: string }>({
+  const router = new Proxy<RouterCtx & { route: string, get_ctx(): RouterCtx }>({
     route: '',
     // ROUTER CTX
     location: '',
     state: {},
     slug: [],
-    params: {}
+    params: {},
+    get_ctx() {
+
+      const ctx = {
+        location: this.location,
+        state: this.state,
+        slug: this.slug,
+        params: this.params
+      }
+
+      Object.freeze(ctx);
+
+      return ctx;
+    }
   }, {
     set(t, k, v) {
 
@@ -55,15 +65,27 @@ function clientRouter() {
     }
   });
 
-  let processing = {} as ReturnType<typeof Processing>
 
-  async function change_location(location: string) {
+  function get_code_route(path: string, code = 404) {
 
-    processing = Processing(location)
+    const path_code = Path.join(path, `${code}`);
 
-    console.log('change location', location)
+    if (components[path_code]) {
+      return path_code;
+    } else if (path != '/') {
+      return get_code_route(dirname(path), code);
+    }
+  }
 
-    const update: Omit<typeof router, "state"> = {
+
+  function change_location(location: string, code?: number) {
+
+    location = location.endsWith('/')
+      ? location.slice(0, -1)
+      : location
+
+    // console.log('change location', location)
+    const update: Omit<typeof router, "state" | "get_ctx"> = {
       route: '',
       location,
       slug: [],
@@ -85,29 +107,28 @@ function clientRouter() {
 
     }
 
+
     if (components.hasOwnProperty(path)) {
       update.route = path;
     } else {
 
-      update.route = path;
-
       // resolve dynamic route
       const slug: string[] = [];
       let curr = path;
-      let rest = '';
+      // let rest = '';
       let slug_size = 0;
 
       while (curr != '/') {
         let dirname = Path.dirname(curr);
         let basename = Path.basename(curr)
 
-        rest = Path.join(curr, basename)
+
         slug_size = slug.unshift(basename);
 
         if (dynamic_routes.hasOwnProperty(dirname)) {
           const data = dynamic_routes[dirname];
 
-          if (data.slug_size == 0 || data.slug_size <= slug_size) {
+          if (data.catch_all || slug_size == 1) {
             update.route = data.route;
             update.slug = slug;
           }
@@ -120,21 +141,12 @@ function clientRouter() {
       // loop end
     }
 
+    if (code) {
+      update.route = get_code_route(location, code) || '';
+    }
 
-    if (modules[update.route]) {
-      const mod = modules[update.route];
-
-      if (mod.before) {
-        const ctx = { ...update } as Partial<typeof update>;
-        delete ctx.route;
-        Object.freeze(ctx)
-
-        const not_allowed = await mod.before(ctx);
-        log('resolve before', not_allowed)
-        if (not_allowed) {
-          update.route = '401';
-        };
-      }
+    if (!update.route) {
+      update.route = get_code_route(location, 404) || '';
     }
 
     router.params = update.params;
@@ -143,12 +155,20 @@ function clientRouter() {
 
     router.location = update.location;
 
-    processing.done()
   }
 
 
   // INIT ROUTER STATE
   change_location(window.location.pathname);
+
+  function update_state(state: any) {
+    if (state) {
+      if (typeof state == 'function') {
+        state = state(router.state);
+      }
+      router.state = state;
+    }
+  };
 
   const subscribe = (fn: () => void) => {
     const index = listeners.push(fn) - 1;
@@ -162,14 +182,13 @@ function clientRouter() {
 
   const Router = () => {
 
-    const [state, setState] = useState(router.route)
+    const [state, setState] = useState(router.route);
 
     function update() {
-      setState(() => router.location);
+      setState(() => router.route);
     }
 
     useEffect(() => {
-      log(router)
       const unsubscribe = subscribe(update);
 
       return () => {
@@ -180,9 +199,8 @@ function clientRouter() {
 
     if (components[state]) {
       return createElement(components[state]);
-    } else if (components["404"]) {
-      return createElement(components["404"]);
-    } else return null;
+    }
+    return null;
 
   }
 
@@ -190,11 +208,11 @@ function clientRouter() {
 
   const useParams = () => {
 
-    const [state, setState] = useState(router)
+    const [state, setState] = useState(router.get_ctx())
 
     function update() {
       // TODO delete route
-      setState(() => ({ ...router }));
+      setState(() => router.get_ctx());
     }
 
     useEffect(() => {
@@ -211,53 +229,30 @@ function clientRouter() {
 
   // API
 
-  const navigate = async <T extends { [key: string]: any }>(to: string, state?: ((prev: T) => Partial<T>) | Partial<T>) => {
-
-    if (processing.path == to) {
-      log('same path abort navigate');
-      return;
-    }
-
-    if (processing.pending) await processing.pending;
-
-    if (state) {
-
-      if (typeof state == 'function') {
-        state = state(router.state as T);
-      }
-      router.state = state;
-    }
-
-    change_location(to)
+  const navigate = async (
+    to: string,
+    code?: number
+  ) => {
+    change_location(to, code);
   };
 
-
-  const redirect = (to?: string) => {
-    if (to) {
-      navigate(to)
-    } else {
-      console.log(history)
-    }
+  const setState = <T extends { [key: string]: any }>(
+    state?: ((prev: T) => Partial<T>) | Partial<T>
+  ) => {
+    update_state(state)
   }
 
   return {
     Router,
     useParams,
-    navigate
+    navigate,
+    setState
   }
 
 }
 
 
-function Processing(path: string) {
-  let done = () => undefined;
-  const pending = new Promise(res => (done as any) = res);
-  return {
-    pending,
-    path,
-    done
-  };
-}
+
 
 
 

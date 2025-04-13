@@ -9,7 +9,7 @@ const modules: { [key: string]: Module } = {/* MODULES */
 };
 const components: { [key: string]: ComponentType } = {/* COMPONENTS */
 };
-const dynamic_routes: { [key: string]: { route: string, slug_size: number } } = {/* DYNAMIC_ROUTES */
+const dynamic_routes: { [key: string]: { route: string, catch_all: boolean } } = {/* DYNAMIC_ROUTES */
 };
 
 export {

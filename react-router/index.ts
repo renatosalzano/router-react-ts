@@ -4,7 +4,7 @@ import type {
   Plugin,
   ViteDevServer
 } from "vite"
-import { dirname, join, parse, posix, relative, resolve } from 'path';
+import { dirname, extname, join, parse, posix, relative, resolve } from 'path';
 import { readdirSync, readFileSync } from 'fs';
 import { print, time } from './utils/shortcode';
 import { build_routes } from './src/build_routes';
@@ -21,13 +21,13 @@ function reactRouter(): Plugin {
 
   const routes: { [key: string]: string } = {};
   const dynamic_routes = new Set<string>();
-  const route_components = new Map<string, string>();
-  const cache = new Map<string, string>();
+  // const route_components = new Map<string, string>();
+  // const cache = new Map<string, string>();
 
-  const is_src = createFilter(
-    `src/**/*.{js,ts,jsx,tsx}`,
-    'node_modules/**'
-  );
+  // const is_src = createFilter(
+  //   `src/**/*.{js,ts,jsx,tsx}`,
+  //   'node_modules/**'
+  // );
 
   const is_route = createFilter(
     `${src_routes}/**/*.{jsx,tsx}`,
@@ -39,6 +39,12 @@ function reactRouter(): Plugin {
 
     print(time(';1'), '[react-router];c', 'build routes.')
 
+    const routes_for_check = new Set<string>();
+
+    // function add_route(route: string) {
+    //   if (routes_for_check.has(route))
+    // }
+
     const routes_path = resolve(process.cwd(), src_routes)
 
     const source = readdirSync(
@@ -47,41 +53,54 @@ function reactRouter(): Plugin {
       { recursive: true, withFileTypes: true }
     );
 
+    function create_route(route: string, filename: string) {
+
+      const final_route = posix.join(route, filename);
+
+      if (filename.startsWith('[')) {
+        const catch_all = filename.includes('...');
+        dynamic_routes.add(`\n\t"${route}" : { route:"${final_route}", catch_all: ${catch_all} }`);
+      }
+
+      return final_route;
+    }
+
+    function check_route(route: string, filepath: string) {
+      if (routes_for_check.has(route)) {
+        print(`ERROR: [react-router] duplicate route: ${route}\n  at ${filepath};r`);
+        return true;
+      }
+      routes_for_check.add(route)
+    }
+
     for (const file of source) {
+
+      const path = join((file.parentPath || file.path), file.name);
+      const source_path = normalizePath("/" + relative(process.cwd(), path));
+
+      const ext = extname(source_path);
+      const filename = file.name.replace(ext, '');
+
+      let route = normalizePath(
+        source_path
+          .replace(src_routes, '')
+          .replace(file.name, '')
+      );
+
 
       if (file.isFile()) {
 
-        const id = join(file.parentPath, file.name);
-        const source_path = normalizePath("/" + relative(process.cwd(), id));
+        if (filename == 'index') {
 
-        // print(source_path)
+          route = route.slice(0, route.length - 1);
+        } else {
 
-        const path = resolve((file.parentPath || file.path), file.name);
-        const filename = parse(path).name;
-
-        // print('filename;m', filename);
-
-        let route = dirname(path)
-          .replace(routes_path, "")
-          .replace(/\\/g, '/')
-
-        if (/[0-9]{3}/.test(filename)) {
-          route = filename;
-        } else if (filename != 'index') {
-
-          const final_route = posix.join(route, filename);
-
-          if (filename.startsWith('[')) {
-            const limit = Number(filename.match(/(?<=\{).*?(?=\})/gm) || 1)
-            dynamic_routes.add(`\n\t"${route}" : { route:"${final_route}", slug_size: ${limit} }`);
-          }
-
-          // print(dynamic_routes)
-
-          route = final_route;
+          route = create_route(route, filename);
         }
 
-        route = route || '/';
+        if (check_route(route, path)) {
+          continue;
+        }
 
         routes[route] = path;
 
@@ -91,13 +110,17 @@ function reactRouter(): Plugin {
           dev_server.transformRequest(source_path)
         };
 
+      } else {
+
+        route = create_route(route, filename);
+
       }
     };
 
-    if (dev_server) {
-      dev_server.transformRequest('@react-router/src/build.ts')
-      print(dev_server.moduleGraph.urlToModuleMap.keys())
+    // check routes
 
+    if (dev_server) {
+      dev_server.transformRequest('@react-router/src/build.ts');
     };
 
   }
@@ -157,10 +180,6 @@ function reactRouter(): Plugin {
           dev_server.restart()
         }
       });
-
-      server.middlewares.use('/@react-router/src/clientRouter.ts', async function (req, res) {
-        print(req)
-      })
 
       // server.middlewares.use('/@rce/client.js', async function name(req, res, next) {
       //   print('requested client.js'.y())
