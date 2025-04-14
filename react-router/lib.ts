@@ -1,7 +1,4 @@
-// import { Router } from "./Router";
-import type { Routes } from "./.local/types";
-import clientRouter from "./src/clientRouter";
-
+import clientRouter from "./client/clientRouter";
 
 const {
   Router,
@@ -21,8 +18,9 @@ declare namespace Route {
     location: string;
     params: { [key: string]: string };
   }
-  type before = (ctx: Ctx) => any;
-  type onerror = (ctx: Ctx, error: string) => any;
+  type config = {
+    alias: string
+  }
 }
 
 export type {

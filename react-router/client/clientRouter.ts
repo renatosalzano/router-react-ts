@@ -1,6 +1,8 @@
 import { createElement, useEffect, useState } from "react";
 import Path, { dirname } from "path-browserify"
-import { components, modules, dynamic_routes } from '@react-router/src/build.ts';
+import { components, modules, dynamic_routes } from '@react-router/client/routes.ts';
+
+const routerLinks = []
 
 
 type RouterCtx = {
@@ -15,6 +17,7 @@ type Fn = () => void;
 function clientRouter() {
 
   const history = window.history;
+  const dynamic_route_cache = new Map<string, { slug: string[], route: string }>();
 
   const listeners: Fn[] = [];
 
@@ -78,13 +81,85 @@ function clientRouter() {
   }
 
 
+  function resolve_dynamic_route(path: string) {
+
+    if (dynamic_route_cache.has(path)) {
+      return dynamic_route_cache.get(path);
+    }
+
+    const segments = path == '/'
+      ? 1
+      : path.split('/').length - 1;
+
+    if (dynamic_routes[segments]) {
+      for (const { reg, route } of dynamic_routes[segments]) {
+        const result = reg.exec(path);
+
+        if (result != null && result.length >= 2) {
+          const [_, ...slug] = result;
+
+          dynamic_route_cache.set(path, {
+            slug,
+            route
+          });
+
+          return {
+            slug,
+            route
+          }
+        }
+      }
+    }
+
+    if (dynamic_routes.catch_all) {
+
+      const champion: { route: string, slug: string[], score: number } = {
+        route: '',
+        slug: [],
+        score: 0
+      }
+
+      for (const { reg, route, score } of dynamic_routes.catch_all) {
+        const result = reg.exec(path);
+
+        console.log(result, reg)
+
+        if (result) {
+
+          const [_, ...slug] = result;
+
+          if (score > champion.score) {
+            champion.route = route;
+            champion.slug = slug;
+            champion.score = score;
+          }
+
+        }
+      }
+
+      if (champion.route) {
+
+        dynamic_route_cache.set(path, {
+          slug: champion.slug,
+          route: champion.route
+        });
+
+        return {
+          slug: champion.slug,
+          route: champion.route
+        }
+
+      }
+
+    }
+
+    return null;
+  }
+
+
   function change_location(location: string, code?: number) {
 
-    location = location.endsWith('/')
-      ? location.slice(0, -1)
-      : location
-
-    // console.log('change location', location)
+    console.log('change location', location)
     const update: Omit<typeof router, "state" | "get_ctx"> = {
       route: '',
       location,
@@ -92,7 +167,10 @@ function clientRouter() {
       params: {}
     }
 
-    let [path, params = window.location.search] = location.split('?');
+    let [path, params] = location.split('?');
+
+    path ||= '/';
+    params ||= window.location.search;
 
     if (params) {
 
@@ -102,43 +180,24 @@ function clientRouter() {
       }
 
       if (!params.startsWith("?")) {
-        params += '?'
+        params += '?';
       }
 
     }
 
+    console.log('path', path)
 
     if (components.hasOwnProperty(path)) {
       update.route = path;
     } else {
 
-      // resolve dynamic route
-      const slug: string[] = [];
-      let curr = path;
-      // let rest = '';
-      let slug_size = 0;
+      const result = resolve_dynamic_route(path);
 
-      while (curr != '/') {
-        let dirname = Path.dirname(curr);
-        let basename = Path.basename(curr)
-
-
-        slug_size = slug.unshift(basename);
-
-        if (dynamic_routes.hasOwnProperty(dirname)) {
-          const data = dynamic_routes[dirname];
-
-          if (data.catch_all || slug_size == 1) {
-            update.route = data.route;
-            update.slug = slug;
-          }
-
-          break;
-        }
-
-        curr = dirname;
+      if (result) {
+        update.route = result.route
+        console.log(result)
       }
-      // loop end
+
     }
 
     if (code) {
@@ -157,6 +216,11 @@ function clientRouter() {
 
   }
 
+  // {
+  //   for (const route in modules) {
+
+  //   }
+  // }
 
   // INIT ROUTER STATE
   change_location(window.location.pathname);
