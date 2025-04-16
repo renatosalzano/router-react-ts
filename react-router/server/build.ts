@@ -2,25 +2,45 @@ import { basename, dirname, extname, join, posix, relative, resolve } from "path
 import { print, time } from "../utils/shortcode";
 import { readdirSync } from "fs";
 import { normalizePath } from "vite";
-import { writeFile } from "fs/promises";
+import { readFile, writeFile } from "fs/promises";
+import { BuildOptions } from "../index.ts";
 
 
 let IMPORTS: string = '';
 let COMPONENTS: string = '';
 let MODULES: string = ''
 let DYNAMIC_ROUTES: string = '';
+let ROUTES: string = '';
+let ROUTES_TYPES: string = '';
+let ROUTES_ENUM: string = '';
 
 
-function build(src_routes: string) {
+function build(options: BuildOptions) {
 
   print(time(';1'), '[react-router];c', 'build routes.');
 
+  print(options)
+
+  const src_routes = options.srcRoutes;
+  const generate_routes_ts = options.generateRoutesTs;
+
+  {
+    IMPORTS = '';
+    COMPONENTS = '';
+    MODULES = ''
+    DYNAMIC_ROUTES = '';
+    ROUTES = '';
+    ROUTES_TYPES = '';
+  }
+
   const routes = new Map<string, string>();
+  const abs_routes = new Map<string, string>();
 
   const dynamic_routes = new Map<string, { segments: number, catch_all: boolean, output: string }>();
   const catch_all_routes = new Map<string, string>();
+  const dynamic_routes_check = new Map<string, string>();
 
-  const routes_path = resolve(process.cwd(), src_routes)
+  const routes_path = resolve(process.cwd(), src_routes as string);
 
   const source = readdirSync(
     routes_path,
@@ -38,7 +58,7 @@ function build(src_routes: string) {
 
     let route = normalizePath(
       source_path
-        .replace(src_routes, '')
+        .replace(src_routes as string, '')
         .replace(file.name, '')
     );
 
@@ -49,53 +69,82 @@ function build(src_routes: string) {
     }
 
 
-    if (file.isFile()) {
+    try {
 
-      const parent_route = route;
-      const parent_filename = basename(dirname(route))
+      if (filename == 'routes') { continue; }
 
-      route = filename != 'index'
-        ? posix.join(route, filename)
-        : route;
+      if (file.isFile()) {
 
-      if (filename.startsWith('[') || parent_filename.startsWith('[')) {
+        const parent_route = route;
+        const parent_filename = basename(dirname(route));
 
-        const catch_all = filename.includes('...');
+        route = filename != 'index'
+          ? posix.join(route, filename)
+          : route;
 
-        let segments = route.split('/').length - 1;
-        let output = '';
+        if (filename.startsWith('[') || parent_filename.startsWith('[')) {
 
-        if (catch_all) {
+          const catch_all = filename.includes('...');
 
-          catch_all_routes.set(parent_route, route);
-          const reg = new RegExp(`^${route
+          let segments = route.split('/').length - 1;
+          let output = '';
+
+          if (catch_all) {
+
+            catch_all_routes.set(parent_route, route);
+            const reg = new RegExp(`^${route
               .replace(/[\.]{3}/g, '')
               .replace(/\[.*?\]/g, '(.*?)')
-            }$`, 'gs');
-          output = `\n\t\t{ reg: ${reg}, route:"${route}", score:${segments} }`
+              }$`, 'gs');
+            output = `\n\t\t{ reg: ${reg}, route:"${route}", score:${segments} }`
 
-        } else {
+          } else {
 
+            const reg = new RegExp(`^${route.replace(/\[.*?\]/g, '(.*?)')}$`, 'gs');
 
-          const reg = new RegExp(`^${route.replace(/\[.*?\]/g, '(.*?)')}$`, 'gs');
+            output = `\n\t\t{ reg: ${reg}, route:"${route}" }`
+          }
 
-          output = `\n\t\t{ reg: ${reg}, route:"${route}" }`
+          dynamic_routes.set(route, { segments, catch_all, output });
         }
 
-        dynamic_routes.set(route, { segments, catch_all, output })
+        const flat_route = route.replace(/\[.*?\]/g, '*')
+
+        // first check
+        if (dynamic_routes_check.has(flat_route)) {
+
+          dynamic_routes.delete(route);
+
+          throw {
+            route: source_path,
+            src: path,
+            conflict_route: dynamic_routes_check.get(flat_route)
+          }
+
+        } else {
+          dynamic_routes_check.set(flat_route, source_path);
+        }
+
+        routes.set(route, source_path);
+        abs_routes.set(route, path);
+
+        print('route;m', route, source_path + ';g')
+
+        ROUTES_TYPES += `\n  | \`${route.replace(/\[.*?\]/g, '${string}')}\``
+
+      } // end is file
+
+    } catch (data: any) {
+
+      if (data.route && data.src && data.conflict_route) {
+        print(
+          `error can not build '${data.route}'\n;r`,
+          `detected conflict with '${data.conflict_route}';r`,
+        );
       }
+    }
 
-      routes.set(route, source_path);
-
-      print('route;m', route, source_path + ';g')
-
-      // if (dev_server) {
-      //   dev_server.transformRequest(source_path)
-      // };
-
-    } // end is file
   } // end files loop
-
 
   const dynamic_routes_output: { [key: string | number]: string[] } = { catch_all: [] };
 
@@ -111,8 +160,11 @@ function build(src_routes: string) {
       if (basename(route).startsWith('[')) {
         // error
 
-        const jolly_route = catch_all_routes.get(dirname(route))
-        print(`error [react-router] Route "${route}" because is already handled by "${jolly_route}"\n  at ${routes.get(route)};r`);
+        print(
+          `error can not build '${route}'\n;r`,
+          `detected conflict with '${catch_all_routes.get(dirname(route))}';r`,
+        );
+
         dynamic_routes.delete(route);
         routes.delete(route);
         continue;
@@ -133,8 +185,10 @@ function build(src_routes: string) {
 
   for (const [route, from] of routes.entries()) {
     IMPORTS += `import * as Route_${route_index} from '${from}';\n`;
-    COMPONENTS += `\n\t'${route}': Route_${route_index}.default,`
-    MODULES += `\n\t'${route}': Route_${route_index},`
+    COMPONENTS += `\n\t'${route}': Route_${route_index}.default,`;
+    MODULES += `\n\t'${route}': Route_${route_index},`;
+
+    ROUTES += `{ href: '${route}'}`
     route_index++;
   }
 
@@ -142,12 +196,20 @@ function build(src_routes: string) {
     DYNAMIC_ROUTES += `\n\t${key}: [${value.join(',')}\n\t],`
   }
 
-  // return {
-  //   IMPORTS,
-  //   COMPONENTS,
-  //   MODULES,
-  //   DYNAMIC_ROUTES
-  // }
+
+  if (generate_routes_ts) {
+
+    const input = resolve(__dirname, './Types.template');
+    const output = resolve(process.cwd(), `${src_routes}/routes.ts`);
+
+    readFile(input, 'utf-8')
+      .then((code) => {
+        code = code.replace('/* ROUTES_TYPES */', ROUTES_TYPES);
+        writeFile(output, code, 'utf-8').then(() => {
+          print('generated;g', output);
+        });
+      })
+  }
 
 }
 

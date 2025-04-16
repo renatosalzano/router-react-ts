@@ -12,6 +12,7 @@
     "moduleResolution": "bundler",
     "isolatedModules": true,
     "moduleDetection": "force",
+    "jsx": "react-jsx",
 
     /* Linting */
     "strict": true,

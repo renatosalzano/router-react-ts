@@ -10,10 +10,15 @@ import { print } from './utils/shortcode';
 import { readFile } from 'fs/promises';
 import { build, build_routes } from './server/build';
 
-function reactRouter(): Plugin {
+export type BuildOptions = {
+  srcRoutes?: string;
+  generateRoutesTs?: boolean;
+}
 
+function reactRouter(options: BuildOptions): Plugin {
 
-  const src_routes = 'src/pages';
+  options.srcRoutes ??= 'src/pages';
+  const src_routes = options.srcRoutes;
 
   let dev_server: ViteDevServer;
   let cmd: string;
@@ -85,7 +90,7 @@ function reactRouter(): Plugin {
 
     buildStart() {
 
-      build(src_routes);
+      build(options);
 
       if (dev_server) {
         dev_server.transformRequest('@react-router/client/routes.ts')

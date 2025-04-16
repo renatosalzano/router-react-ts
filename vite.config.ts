@@ -4,5 +4,10 @@ import reactRouter from './react-router';
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react(), reactRouter()]
+  plugins: [
+    react(),
+    reactRouter({
+      generateRoutesTs: true
+    })
+  ]
 })

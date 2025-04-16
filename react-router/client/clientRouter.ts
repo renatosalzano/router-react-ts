@@ -1,8 +1,7 @@
-import { createElement, useEffect, useState } from "react";
+import { createElement, useEffect, useRef, useState } from "react";
 import Path, { dirname } from "path-browserify"
 import { components, modules, dynamic_routes } from '@react-router/client/routes.ts';
-
-const routerLinks = []
+import NotDefined from "./NotDefined";
 
 
 type RouterCtx = {
@@ -113,7 +112,7 @@ function clientRouter() {
 
     if (dynamic_routes.catch_all) {
 
-      const champion: { route: string, slug: string[], score: number } = {
+      const output: { route: string, slug: string[], score: number } = {
         route: '',
         slug: [],
         score: 0
@@ -122,31 +121,31 @@ function clientRouter() {
       for (const { reg, route, score } of dynamic_routes.catch_all) {
         const result = reg.exec(path);
 
-        console.log(result, reg)
+        // console.log(result, reg)
 
         if (result) {
 
           const [_, ...slug] = result;
 
-          if (score > champion.score) {
-            champion.route = route;
-            champion.slug = slug;
-            champion.score = score;
+          if (score > output.score) {
+            output.route = route;
+            output.slug = slug;
+            output.score = score;
           }
 
         }
       }
 
-      if (champion.route) {
+      if (output.route) {
 
         dynamic_route_cache.set(path, {
-          slug: champion.slug,
-          route: champion.route
+          slug: output.slug,
+          route: output.route
         });
 
         return {
-          slug: champion.slug,
-          route: champion.route
+          slug: output.slug,
+          route: output.route
         }
 
       }
@@ -185,7 +184,7 @@ function clientRouter() {
 
     }
 
-    console.log('path', path)
+    // console.log('path', path)
 
     if (components.hasOwnProperty(path)) {
       update.route = path;
@@ -195,7 +194,7 @@ function clientRouter() {
 
       if (result) {
         update.route = result.route
-        console.log(result)
+        // console.log(result)
       }
 
     }
@@ -246,10 +245,19 @@ function clientRouter() {
 
   const Router = () => {
 
-    const [state, setState] = useState(router.route);
+    const is_not_defined = useRef(false);
+
+    const check_route_component = (route: string) => {
+
+      is_not_defined.current = (components[router.route] == undefined)
+
+      return route;
+    }
+
+    const [state, setState] = useState(check_route_component(router.route));
 
     function update() {
-      setState(() => router.route);
+      setState(check_route_component(router.route));
     }
 
     useEffect(() => {
@@ -261,12 +269,24 @@ function clientRouter() {
 
     }, []);
 
+    if (is_not_defined.current) {
+      return createElement(NotDefined, { route: router.route })
+    }
+
     if (components[state]) {
       return createElement(components[state]);
     }
     return null;
 
   }
+
+
+  const Redirect = <T extends string>(to: T, code?: number) => {
+
+    navigate(to, code);
+    return null;
+  }
+
 
   // HOOKS
 
@@ -293,8 +313,8 @@ function clientRouter() {
 
   // API
 
-  const navigate = async (
-    to: string,
+  const navigate = async <T extends string>(
+    to: T,
     code?: number
   ) => {
     change_location(to, code);
@@ -308,16 +328,12 @@ function clientRouter() {
 
   return {
     Router,
+    Redirect,
     useParams,
     navigate,
     setState
   }
 
 }
-
-
-
-
-
 
 export default clientRouter;
