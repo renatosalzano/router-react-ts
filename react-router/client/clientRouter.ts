@@ -1,4 +1,4 @@
-import { createElement, useEffect, useRef, useState } from "react";
+import { AnchorHTMLAttributes, createElement, DetailedHTMLProps, FC, ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import Path, { dirname } from "path-browserify"
 import { components, modules, dynamic_routes } from '@react-router/client/routes.ts';
 import NotDefined from "./NotDefined";
@@ -6,7 +6,6 @@ import NotDefined from "./NotDefined";
 
 type RouterCtx = {
   location: string;
-  state: { [key: string]: any };
   slug: string[];
   params: { [key: string]: string };
 }
@@ -24,14 +23,12 @@ function clientRouter() {
     route: '',
     // ROUTER CTX
     location: '',
-    state: {},
     slug: [],
     params: {},
     get_ctx() {
 
       const ctx = {
         location: this.location,
-        state: this.state,
         slug: this.slug,
         params: this.params
       }
@@ -45,16 +42,11 @@ function clientRouter() {
 
       Reflect.set(t, k, v);
 
-      if (k == 'state') {
-        t.state = v;
-        history.pushState(t.state, "");
+      if (k == 'location') {
+        history.pushState({ location: t.location }, "", t.location);
       }
 
       if (k == 'location') {
-        history.pushState(t.state, "", t.location);
-      }
-
-      if (k == 'location' || k == 'state') {
 
         // update to react
         for (const notify of listeners) {
@@ -107,6 +99,8 @@ function clientRouter() {
             route
           }
         }
+
+        reg.lastIndex = 0;
       }
     }
 
@@ -119,21 +113,24 @@ function clientRouter() {
       }
 
       for (const { reg, route, score } of dynamic_routes.catch_all) {
+
         const result = reg.exec(path);
 
-        // console.log(result, reg)
+        if (result && score > output.score) {
 
-        if (result) {
+          let [_, ...slug] = result;
 
-          const [_, ...slug] = result;
+          slug = slug[0]
+            .split('/')
+            .filter(str => str != '')
 
-          if (score > output.score) {
-            output.route = route;
-            output.slug = slug;
-            output.score = score;
-          }
+          output.route = route;
+          output.slug = slug;
+          output.score = score;
 
         }
+
+        reg.lastIndex = 0; // reset reg state
       }
 
       if (output.route) {
@@ -193,7 +190,8 @@ function clientRouter() {
       const result = resolve_dynamic_route(path);
 
       if (result) {
-        update.route = result.route
+        update.route = result.route;
+        update.slug = result.slug;
         // console.log(result)
       }
 
@@ -215,23 +213,9 @@ function clientRouter() {
 
   }
 
-  // {
-  //   for (const route in modules) {
-
-  //   }
-  // }
-
   // INIT ROUTER STATE
   change_location(window.location.pathname);
 
-  function update_state(state: any) {
-    if (state) {
-      if (typeof state == 'function') {
-        state = state(router.state);
-      }
-      router.state = state;
-    }
-  };
 
   const subscribe = (fn: () => void) => {
     const index = listeners.push(fn) - 1;
@@ -240,6 +224,14 @@ function clientRouter() {
       listeners.splice(index, 1);
     };
   };
+
+
+  function popstate(ev: PopStateEvent) {
+    if (ev.state.location != router.location) {
+      change_location(ev.state.location);
+    }
+  }
+
 
   // REACT
 
@@ -263,8 +255,11 @@ function clientRouter() {
     useEffect(() => {
       const unsubscribe = subscribe(update);
 
+      window.addEventListener('popstate', popstate);
+
       return () => {
         unsubscribe();
+        window.removeEventListener('popstate', popstate);
       }
 
     }, []);
@@ -281,10 +276,33 @@ function clientRouter() {
   }
 
 
-  const Redirect = <T extends string>(to: T, code?: number) => {
+  const Redirect = <T extends string>({ to, code }: { to: T, code?: number }) => {
 
     navigate(to, code);
     return null;
+  }
+
+  type NavLinkProps<T extends string> = Omit<DetailedHTMLProps<AnchorHTMLAttributes<HTMLAnchorElement>, HTMLAnchorElement>, 'href'>
+    & { to: T, children: ReactNode }
+
+  const NavLink = <T extends string>(
+    { to, children, ...props }: NavLinkProps<T>
+  ) => {
+
+    const { location } = useParams();
+
+    const base = 'nav-link';
+
+    const className = useMemo(() => location == to ? `${base} active` : base, [location]);
+
+    function onClick(ev: Event) {
+      ev.preventDefault();
+      navigate(to);
+    }
+
+    return (
+      createElement('a', { children, className, href: to, onClick, ...props })
+    )
   }
 
 
@@ -295,8 +313,7 @@ function clientRouter() {
     const [state, setState] = useState(router.get_ctx())
 
     function update() {
-      // TODO delete route
-      setState(() => router.get_ctx());
+      setState(() => ({ ...router.get_ctx() }));
     }
 
     useEffect(() => {
@@ -320,18 +337,12 @@ function clientRouter() {
     change_location(to, code);
   };
 
-  const setState = <T extends { [key: string]: any }>(
-    state?: ((prev: T) => Partial<T>) | Partial<T>
-  ) => {
-    update_state(state)
-  }
-
   return {
     Router,
     Redirect,
+    NavLink,
     useParams,
-    navigate,
-    setState
+    navigate
   }
 
 }

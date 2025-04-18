@@ -76,13 +76,14 @@ function build(options: BuildOptions) {
       if (file.isFile()) {
 
         const parent_route = route;
-        const parent_filename = basename(dirname(route));
+        // const parent_filename = basename(dirname(route));
 
         route = filename != 'index'
           ? posix.join(route, filename)
           : route;
 
-        if (filename.startsWith('[') || parent_filename.startsWith('[')) {
+
+        if (/[\[\]]/g.test(route)) {
 
           const catch_all = filename.includes('...');
 
@@ -93,9 +94,10 @@ function build(options: BuildOptions) {
 
             catch_all_routes.set(parent_route, route);
             const reg = new RegExp(`^${route
-              .replace(/[\.]{3}/g, '')
-              .replace(/\[.*?\]/g, '(.*?)')
+                .replace(/[\.]{3}/g, '')
+                .replace(/\[.*?\]/g, '(.*?)')
               }$`, 'gs');
+
             output = `\n\t\t{ reg: ${reg}, route:"${route}", score:${segments} }`
 
           } else {
@@ -195,6 +197,8 @@ function build(options: BuildOptions) {
   for (const [key, value] of Object.entries(dynamic_routes_output)) {
     DYNAMIC_ROUTES += `\n\t${key}: [${value.join(',')}\n\t],`
   }
+
+  print(dynamic_routes)
 
 
   if (generate_routes_ts) {

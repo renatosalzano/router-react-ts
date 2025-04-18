@@ -1,0 +1,19 @@
+.breadcrumb {
+
+  & ol {
+    display: flex;
+    list-style-type: none;
+
+    & li {
+
+      & a::after {
+        display: inline-block;
+        color: #ffffff;
+        content: ">";
+        font-weight: bold;
+        padding: 0 4px;
+      }
+    }
+  }
+  
+}

@@ -6,6 +6,7 @@ function User() {
 
   console.log(params)
 
+
   return (
     <div>
       user page
