@@ -1,0 +1,40 @@
+.text-field {
+  display: flex;
+  flex-direction: column;
+  margin: 8px;
+
+  input {
+    border: none;
+    background: none;
+    outline: none;
+
+    display: flex;
+    padding: 4px 0;
+    margin-top: 4px;
+    border-bottom: 1px solid white;
+
+    &:hover,
+    &:focus {
+      border-bottom: 1px solid rgb(0, 136, 255);
+    }
+
+
+  }
+
+  &.readonly {
+    input {
+      cursor: default;
+      font-weight: 600;
+      border-bottom: none;
+    }
+  }
+
+  &.error {
+    color: red;
+
+    input {
+      color: red;
+      border-bottom-color: red;
+    }
+  }
+}

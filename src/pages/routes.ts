@@ -5,6 +5,7 @@ export type Routes =
   | `/about`
   | `/`
   | `/login`
+  | `/form`
   | `/news/${string}`
   | `/user/404`
   | `/user`

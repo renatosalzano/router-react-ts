@@ -243,7 +243,7 @@ function clientRouter() {
 
       is_not_defined.current = (components[router.route] == undefined)
 
-      return route;
+      return `${route}`;
     }
 
     const [state, setState] = useState(check_route_component(router.route));

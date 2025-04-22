@@ -106,3 +106,12 @@ label {
   backdrop-filter: blur(4px);
 }
 
+.form {
+  display: flex;
+  flex-direction: column;
+
+  & .grid {
+    display: grid;
+    grid-template-columns: 50% 50%;
+  }
+}
